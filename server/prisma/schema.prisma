@@ -1,0 +1,400 @@
+// =====================================================================
+// PropertyHub - Prisma Schema for PostgreSQL
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  PROPERTY_OWNER
+  PROPERTY_MANAGER
+  AGENT
+  TENANT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PropertyType {
+  Apartment
+  House
+  Villa
+  Commercial
+  Office
+  Land
+}
+
+enum FurnishingStatus {
+  Furnished
+  Semi_Furnished @map("Semi-Furnished")
+  Unfurnished
+}
+
+enum AvailabilityStatus {
+  Available
+  Occupied
+  Under_Maintenance @map("Under Maintenance")
+}
+
+enum TenantStatus {
+  Active
+  Inactive
+  Pending
+}
+
+enum IdProofType {
+  Aadhaar
+  PAN
+  Passport
+  VoterID
+}
+
+enum AgreementStatus {
+  Draft
+  Active
+  Expired
+  Terminated
+}
+
+enum PaymentStatus {
+  Paid
+  Pending
+  Overdue
+  Partially_Paid @map("Partially Paid")
+}
+
+enum PaymentMethod {
+  Razorpay
+  UPI
+  Net_Banking @map("Net Banking")
+  Cash
+  Card
+}
+
+enum MaintenanceCategory {
+  Plumbing
+  Electrical
+  Carpentry
+  Painting
+  Appliance
+  HVAC
+  Other
+}
+
+enum MaintenancePriority {
+  Low
+  Medium
+  High
+  Urgent
+}
+
+enum MaintenanceStatus {
+  Open
+  Assigned
+  In_Progress @map("In Progress")
+  Resolved
+  Closed
+}
+
+enum ExpenseCategory {
+  Maintenance
+  Utility
+  Property_Tax @map("Property Tax")
+  Insurance
+  Management_Fee @map("Management Fee")
+  Legal_Compliance @map("Legal & Compliance")
+  Other
+}
+
+enum VisitStatus {
+  Scheduled
+  Completed
+  Cancelled
+}
+
+enum NotificationType {
+  RENT_DUE
+  PAYMENT_SUCCESS
+  LEASE_EXPIRY
+  LEASE_RENEWAL
+  MAINTENANCE_UPDATE
+  PROPERTY_ASSIGNED
+  NEW_TENANT
+  GENERAL
+}
+
+// ---------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------
+
+model User {
+  id             String      @id @default(uuid()) @db.Uuid
+  name           String      @db.VarChar(255)
+  email          String      @unique @db.VarChar(255)
+  password       String      @db.VarChar(255)
+  role           UserRole    @default(TENANT)
+  phone          String      @db.VarChar(30)
+  avatar         String?     @default("") @db.Text
+  status         UserStatus  @default(ACTIVE)
+  street         String?     @default("") @db.VarChar(255)
+  city           String?     @default("") @db.VarChar(100)
+  state          String?     @default("") @db.VarChar(100)
+  pincode        String?     @default("") @db.VarChar(20)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relationships
+  ownedProperties    Property[]         @relation("PropertyOwner")
+  managedProperties  Property[]         @relation("PropertyManager")
+  assignedProperties Property[]         @relation("AssignedAgent")
+  tenantProfile      Tenant?            @relation("UserTenant")
+  ownedAgreements    RentalAgreement[]  @relation("OwnerAgreements")
+  expensesCreated    Expense[]          @relation("UserExpenses")
+  assignedVisits     PropertyVisit[]    @relation("AgentVisits")
+  notifications      Notification[]     @relation("UserNotifications")
+  activityLogs       ActivityLog[]      @relation("UserActivityLogs")
+
+  @@map("users")
+}
+
+model Property {
+  id                 String             @id @default(uuid()) @db.Uuid
+  title              String             @db.VarChar(255)
+  description        String             @db.Text
+  propertyType       PropertyType       @map("property_type")
+  ownerId            String             @map("owner_id") @db.Uuid
+  managerId          String?            @map("manager_id") @db.Uuid
+  assignedAgentId    String?            @map("assigned_agent_id") @db.Uuid
+  address            String             @db.Text
+  city               String             @db.VarChar(100)
+  state              String             @db.VarChar(100)
+  pincode            String             @db.VarChar(20)
+  bedrooms           Int                @default(1)
+  bathrooms          Int                @default(1)
+  builtUpArea        Decimal            @map("built_up_area") @db.Decimal(10, 2)
+  furnishingStatus   FurnishingStatus   @default(Semi_Furnished) @map("furnishing_status")
+  amenities          String[]           @default([])
+  monthlyRent        Decimal            @map("monthly_rent") @db.Decimal(12, 2)
+  securityDeposit    Decimal            @map("security_deposit") @db.Decimal(12, 2)
+  images             String[]           @default([])
+  availabilityStatus AvailabilityStatus @default(Available) @map("availability_status")
+  currentTenantId    String?            @map("current_tenant_id") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  owner              User               @relation("PropertyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  manager            User?              @relation("PropertyManager", fields: [managerId], references: [id], onDelete: SetNull)
+  assignedAgent      User?              @relation("AssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  currentTenant      Tenant?            @relation("PropertyCurrentTenant", fields: [currentTenantId], references: [id], onDelete: SetNull)
+  tenants            Tenant[]           @relation("PropertyTenants")
+  agreements         RentalAgreement[]  @relation("PropertyAgreements")
+  payments           Payment[]          @relation("PropertyPayments")
+  maintenanceTickets MaintenanceRequest[] @relation("PropertyMaintenance")
+  expenses           Expense[]          @relation("PropertyExpenses")
+  visits             PropertyVisit[]    @relation("PropertyVisits")
+
+  @@map("properties")
+}
+
+model Tenant {
+  id                           String          @id @default(uuid()) @db.Uuid
+  userId                       String          @unique @map("user_id") @db.Uuid
+  propertyId                   String?         @map("property_id") @db.Uuid
+  emergencyContactName         String          @map("emergency_contact_name") @db.VarChar(150)
+  emergencyContactRelationship String          @map("emergency_contact_relationship") @db.VarChar(100)
+  emergencyContactPhone        String          @map("emergency_contact_phone") @db.VarChar(30)
+  employerName                 String?         @default("") @map("employer_name") @db.VarChar(255)
+  designation                  String?         @default("") @db.VarChar(150)
+  monthlyIncome                Decimal?        @default(0) @map("monthly_income") @db.Decimal(12, 2)
+  idType                       IdProofType?    @default(Aadhaar) @map("id_type")
+  idNumber                     String?         @default("") @map("id_number") @db.VarChar(100)
+  isVerified                   Boolean         @default(false) @map("is_verified")
+  status                       TenantStatus    @default(Active)
+  leaseStartDate               DateTime?       @map("lease_start_date") @db.Date
+  leaseEndDate                 DateTime?       @map("lease_end_date") @db.Date
+  createdAt                    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                    DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user                         User            @relation("UserTenant", fields: [userId], references: [id], onDelete: Cascade)
+  property                     Property?       @relation("PropertyTenants", fields: [propertyId], references: [id], onDelete: SetNull)
+  currentlyRentedProperties    Property[]      @relation("PropertyCurrentTenant")
+  agreements                   RentalAgreement[] @relation("TenantAgreements")
+  payments                     Payment[]       @relation("TenantPayments")
+  maintenanceTickets           MaintenanceRequest[] @relation("TenantMaintenance")
+
+  @@map("tenants")
+}
+
+model RentalAgreement {
+  id                 String          @id @default(uuid()) @db.Uuid
+  agreementNumber    String          @unique @map("agreement_number") @db.VarChar(100)
+  propertyId         String          @map("property_id") @db.Uuid
+  ownerId            String          @map("owner_id") @db.Uuid
+  tenantId           String          @map("tenant_id") @db.Uuid
+  leaseStartDate     DateTime        @map("lease_start_date") @db.Date
+  leaseEndDate       DateTime        @map("lease_end_date") @db.Date
+  monthlyRent        Decimal         @map("monthly_rent") @db.Decimal(12, 2)
+  securityDeposit    Decimal         @map("security_deposit") @db.Decimal(12, 2)
+  paymentDueDay      Int             @default(5) @map("payment_due_day")
+  agreementStatus    AgreementStatus @default(Active) @map("agreement_status")
+  termsAndConditions String?         @default("Standard 11-month Indian residential tenancy agreement.") @map("terms_and_conditions") @db.Text
+  documentUrl        String?         @default("") @map("document_url") @db.Text
+  renewedFromId      String?         @map("renewed_from_id") @db.Uuid
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  property           Property        @relation("PropertyAgreements", fields: [propertyId], references: [id], onDelete: Cascade)
+  owner              User            @relation("OwnerAgreements", fields: [ownerId], references: [id], onDelete: Cascade)
+  tenant             Tenant          @relation("TenantAgreements", fields: [tenantId], references: [id], onDelete: Cascade)
+  renewedFrom        RentalAgreement? @relation("AgreementRenewal", fields: [renewedFromId], references: [id], onDelete: SetNull)
+  renewals           RentalAgreement[] @relation("AgreementRenewal")
+  payments           Payment[]       @relation("AgreementPayments")
+
+  @@map("rental_agreements")
+}
+
+model Payment {
+  id                   String        @id @default(uuid()) @db.Uuid
+  invoiceNumber        String        @unique @map("invoice_number") @db.VarChar(100)
+  agreementId          String        @map("agreement_id") @db.Uuid
+  propertyId           String        @map("property_id") @db.Uuid
+  tenantId             String        @map("tenant_id") @db.Uuid
+  amount               Decimal       @db.Decimal(12, 2)
+  paymentMonth         String        @map("payment_month") @db.VarChar(50)
+  dueDate              DateTime      @map("due_date") @db.Date
+  paidDate             DateTime?     @map("paid_date") @db.Timestamptz
+  paymentMethod        PaymentMethod @default(Razorpay) @map("payment_method")
+  status               PaymentStatus @default(Pending)
+  transactionReference String?       @default("") @map("transaction_reference") @db.VarChar(255)
+  razorpayOrderId      String?       @default("") @map("razorpay_order_id") @db.VarChar(255)
+  razorpayPaymentId    String?       @default("") @map("razorpay_payment_id") @db.VarChar(255)
+  razorpaySignature    String?       @default("") @map("razorpay_signature") @db.VarChar(255)
+  receiptNumber        String?       @default("") @map("receipt_number") @db.VarChar(100)
+  notes                String?       @default("") @db.Text
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  agreement            RentalAgreement @relation("AgreementPayments", fields: [agreementId], references: [id], onDelete: Cascade)
+  property             Property        @relation("PropertyPayments", fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant               Tenant          @relation("TenantPayments", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model MaintenanceRequest {
+  id                     String              @id @default(uuid()) @db.Uuid
+  ticketNumber           String              @unique @map("ticket_number") @db.VarChar(100)
+  propertyId             String              @map("property_id") @db.Uuid
+  tenantId               String              @map("tenant_id") @db.Uuid
+  category               MaintenanceCategory
+  priority               MaintenancePriority @default(Medium)
+  description            String              @db.Text
+  images                 String[]            @default([])
+  status                 MaintenanceStatus   @default(Open)
+  technicianName         String?             @default("") @map("technician_name") @db.VarChar(150)
+  technicianPhone        String?             @default("") @map("technician_phone") @db.VarChar(30)
+  technicianAssignedDate DateTime?           @map("technician_assigned_date") @db.Timestamptz
+  estimatedCost          Decimal             @default(0) @map("estimated_cost") @db.Decimal(12, 2)
+  actualCost             Decimal             @default(0) @map("actual_cost") @db.Decimal(12, 2)
+  resolutionNotes        String?             @default("") @map("resolution_notes") @db.Text
+  resolvedAt             DateTime?           @map("resolved_at") @db.Timestamptz
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  property               Property            @relation("PropertyMaintenance", fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant                 Tenant              @relation("TenantMaintenance", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_requests")
+}
+
+model Expense {
+  id            String          @id @default(uuid()) @db.Uuid
+  propertyId    String          @map("property_id") @db.Uuid
+  category      ExpenseCategory
+  title         String          @db.VarChar(255)
+  amount        Decimal         @db.Decimal(12, 2)
+  expenseDate   DateTime        @map("expense_date") @db.Date
+  paidTo        String          @map("paid_to") @db.VarChar(255)
+  paymentMethod String          @default("Net Banking") @map("payment_method") @db.VarChar(50)
+  receiptUrl    String?         @default("") @map("receipt_url") @db.Text
+  notes         String?         @default("") @db.Text
+  createdBy     String          @map("created_by") @db.Uuid
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  property      Property        @relation("PropertyExpenses", fields: [propertyId], references: [id], onDelete: Cascade)
+  creator       User            @relation("UserExpenses", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("expenses")
+}
+
+model PropertyVisit {
+  id           String      @id @default(uuid()) @db.Uuid
+  propertyId   String      @map("property_id") @db.Uuid
+  agentId      String?     @map("agent_id") @db.Uuid
+  visitorName  String      @map("visitor_name") @db.VarChar(150)
+  visitorPhone String      @map("visitor_phone") @db.VarChar(30)
+  visitorEmail String?     @default("") @map("visitor_email") @db.VarChar(255)
+  visitDate    DateTime    @map("visit_date") @db.Date
+  visitTime    String      @map("visit_time") @db.VarChar(30)
+  status       VisitStatus @default(Scheduled)
+  feedback     String?     @default("") @db.Text
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  property     Property    @relation("PropertyVisits", fields: [propertyId], references: [id], onDelete: Cascade)
+  agent        User?       @relation("AgentVisits", fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@map("property_visits")
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  recipientId String           @map("recipient_id") @db.Uuid
+  title       String           @db.VarChar(255)
+  message     String           @db.Text
+  type        NotificationType @default(GENERAL)
+  isRead      Boolean          @default(false) @map("is_read")
+  linkUrl     String?          @default("") @map("link_url") @db.Text
+  metadata    Json?            @default("{}")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  recipient   User             @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  userName  String?  @default("System") @map("user_name") @db.VarChar(150)
+  userRole  String?  @default("SYSTEM") @map("user_role") @db.VarChar(50)
+  action    String   @db.VarChar(100)
+  module    String   @db.VarChar(100)
+  details   String   @db.Text
+  ipAddress String?  @default("127.0.0.1") @map("ip_address") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  user      User?    @relation("UserActivityLogs", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("activity_logs")
+}
