@@ -57,6 +57,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 import mongoose from 'mongoose';
 
+// Root API Endpoint
+app.get('/', (req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: 'Property Management System API is running!',
+    version: '1.0.0',
+  });
+});
+
 // Health Check API
 app.get('/api/health', (req: Request, res: Response) => {
   const isConnected = mongoose.connection.readyState === 1;
